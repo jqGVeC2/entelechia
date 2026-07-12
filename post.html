@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entelechia</title>
+  <meta name="description" content="Entelechia — teksty.">
+  <meta property="og:site_name" content="Entelechia">
+  <meta property="og:type" content="article">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text x=%2216%22 y=%2224%22 font-family=%22Georgia,serif%22 font-size=%2224%22 text-anchor=%22middle%22 fill=%22%23000%22>E</text></svg>">
+  <link rel="stylesheet" href="assets/site.css">
+  <script>
+    try {
+      var t = localStorage.getItem('entelechia:theme');
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+</head>
+
+<body data-page="post">
+  <div class="page">
+
+    <header class="masthead">
+      <div class="m-left">
+        <a class="nav" href="index.html">strona główna</a>
+      </div>
+
+      <a class="brand brand-small" href="index.html">entelechia</a>
+
+      <div class="m-right">
+        <a class="nav" href="artykuly.html">wszystkie artykuły</a>
+        <button class="theme" id="theme" type="button" title="Tryb jasny / ciemny" aria-label="Przełącz tryb jasny i ciemny">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 3a9 9 0 0 1 0 18z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div id="content" class="status">wczytywanie…</div>
+      <noscript>
+        <p class="status">Ta strona składa teksty w przeglądarce — potrzebuje włączonego JavaScriptu.</p>
+      </noscript>
+    </main>
+
+    <footer class="site-footer">
+      <a href="index.html">strona główna</a>
+      <a href="artykuly.html">wszystkie artykuły</a>
+      <a data-x href="https://x.com/" rel="noopener">x</a>
+    </footer>
+
+  </div>
+
+  <script src="assets/markdown.js"></script>
+  <script src="assets/site.js"></script>
+</body>
+</html>
