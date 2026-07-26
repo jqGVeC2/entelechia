@@ -256,7 +256,9 @@
     drawAscii();
   }
 
-  /* ---------- Matejko, „Rejtan”, w znakach -------------------------------- */
+  /* ---------- obraz w znakach --------------------------------------------- */
+  /* Który obraz i z jakimi ustawieniami — assets/obrazy/obrazy.json.
+     Grafikę generuje tools/ascii.py paczką asciiart. */
 
   const LABEL = ' [ENTELECHIA] ';
 
@@ -267,6 +269,11 @@
     const wrap = pre.parentElement;
     const width = wrap.clientWidth;
     if (!width) return;
+
+    // Opis dla czytników ekranu bierzemy z generatora, żeby po zmianie obrazu
+    // w obrazy.json nie zostawał w HTML-u opis poprzedniego.
+    const meta = window.ASCII.meta;
+    if (meta && meta.opis) pre.setAttribute('aria-label', meta.opis);
 
     // Osobne warianty na jasno i ciemno — nie jedna grafika odwracana w locie.
     // Tryby nie są swoim lustrem (patrz tools/ascii.py), a każdy wariant ma

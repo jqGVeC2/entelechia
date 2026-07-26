@@ -1,159 +1,227 @@
 # -*- coding: utf-8 -*-
-"""
-Zamienia obraz na grafikę znakową i zapisuje assets/ascii.js
+"""Zamienia obraz z assets/obrazy/ na grafikę znakową i zapisuje assets/ascii.js
 
-    pip install Pillow
+    conda activate entelechia-memetyka
     python tools/ascii.py
 
-DLACZEGO BLOKI, A NIE ".:-=+*#"
-Znaki interpunkcyjne to cienkie kreski — przy małym stopniu pisma rozmywają
-się w szarość i rysunek staje się miękki. Znaki blokowe wypełniają całą
-komórkę, więc działają jak piksele: zostają ostre nawet przy 5 px.
-Skala " ░▒▓█" ma przy tym idealnie równe stopnie pokrycia (0/25/50/75/100%),
-czego zestaw znaków ASCII nigdy nie ma.
+Cała robota siedzi w paczce ``asciiart`` (repozytorium entelechia-memetyka) —
+tu jest tylko spięcie jej z katalogiem assets i formatem, którego oczekuje
+assets/site.js. Nie dopisuj tutaj logiki konwersji; jeśli czegoś brakuje,
+miejscem na to jest paczka.
 
-DLACZEGO DITHERING
-Pięć poziomów to mało. Dithering Floyda–Steinberga rozprasza błąd
-zaokrąglenia na sąsiednie komórki, więc oko widzi płynne półtony —
-tak samo, jak druk gazetowy robi szarość z samych czarnych punktów.
+Co skąd:
+    assets/obrazy/obrazy.json   katalog obrazów + ustawienia
+    assets/obrazy/*.jpg         pliki źródłowe
+    assets/ascii.js             wynik dla obrazu oznaczonego jako "aktywny"
+    assets/obrazy_ascii/*.png   podglądy, żeby ocenić efekt bez odpalania strony
 
-DLACZEGO NIE WYRÓWNUJEMY OŚWIETLENIA
-„Rejtan” trzyma się światłocieniem: jasne postacie na ciemnym tle. Lokalne
-wyrównanie kontrastu (clarity, CLAHE) spłaszcza to i zamienia obraz w szum.
+DLACZEGO ZNAKI BLOKOWE
+Znaki blokowe z U+2580–259F są definicją geometryczną, nie krojem: ``▘`` to
+w każdym foncie dokładnie lewa górna ćwiartka komórki. Strona nie wie, jaki
+monospace dostanie użytkownik (``ui-monospace`` to co innego na Macu, co
+innego na Windowsie), więc każdy inny zestaw znaczyłby, że gęstości mierzymy
+na jednym foncie, a przeglądarka renderuje innym — i tony się rozjeżdżają.
+Przy okazji ćwiartki dają komórce cztery podpola, czyli czterokrotnie większą
+rozdzielczość niż samo ``░▒▓█``, a zostają pełne przy 3 px, w odróżnieniu od
+interpunkcji, która zlewa się w szarość.
+
+DLACZEGO NISKA OSTROŚĆ (0.06)
+Człon kształtu ma tylko rozstrzygać remisy między znakami o zbliżonej
+gęstości. Podbity wyżej sprawia, że ``▌``/``▐`` wygrywają wszędzie, bo prawie
+każdy fragment obrazu ma jakiś gradient lewo-prawo, i obraz pokrywa się
+plecionką pionowych belek.
+
+DLACZEGO DWA WARIANTY TONALNE
+Jasny znak na ciemnym tle rozlewa się optycznie mocniej niż ciemny na białym
+(irradiacja), więc dosłownie odwrócona grafika wychodzi w nocy mleczna.
+Wariant nocny ma własną gammę.
 """
+
+from __future__ import annotations
+
+import argparse
 import io
 import json
-from PIL import Image, ImageOps, ImageEnhance, ImageFilter
+import os
+import sys
 
-SRC = 'assets/Reytan.jpg'
-OUT = 'assets/ascii.js'
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OBRAZY = os.path.join(REPO, "assets", "obrazy")
+KATALOG = os.path.join(OBRAZY, "obrazy.json")
+WYNIK = os.path.join(REPO, "assets", "ascii.js")
+PODGLADY = os.path.join(REPO, "assets", "obrazy_ascii")
 
-# od najjaśniejszego do najciemniejszego, równe stopnie pokrycia
-RAMP = ' ░▒▓█'      # ' ', ░, ▒, ▓, █
-
-# Proporcja komórki: wysokość / szerokość.
-# Przy line-height:1 wysokość = stopień pisma, a szerokość znaku monospace
-# to ok. 0.6 em — czyli 1 / 0.6. Pomyłka tutaj spłaszcza albo rozciąga obraz.
-CHAR_ASPECT = 1.67
-
-COLS_WIDE = 220        # ekran
-COLS_NARROW = 110      # telefon
-
-DETAIL = 120           # wyostrzenie przed zmniejszeniem
-
-# Dwie krzywe tonalne, bo tryby nie są swoim lustrem.
-# Jasny znak na ciemnym tle rozlewa się optycznie mocniej niż ciemny na białym
-# (irradiacja), więc dosłownie odwrócona grafika wychodzi w nocy mleczna.
-# Wersja nocna dostaje własną gammę i mocniejszy kontrast — dzięki temu
-# półtony siadają, a świecą tylko realne światła obrazu.
-# Uwaga na kierunek: tusz jest proporcjonalny do CIEMNOŚCI obrazu podanego do
-# render(). W wariancie nocnym obraz jest już odwrócony, więc rozjaśnienie go
-# (gamma < 1) UJMUJE tuszu — a o to chodzi: mniej świecących znaków na czerni.
-GAMMA_LIGHT = 0.85     # mniej tuszu → jaśniejsza plansza na bieli
-CONTRAST_LIGHT = 1.35
-
-GAMMA_DARK = 0.60      # mniej tuszu → ciemniejsza plansza na czerni
-CONTRAST_DARK = 1.60
+# Proporcja komórki znaku w przeglądarce: przy line-height:1 wysokość to
+# stopień pisma, a szerokość monospace ok. 0.6 em. Pomyłka tutaj spłaszcza
+# albo rozciąga obraz.
+PROPORCJA = 0.6
+KOMORKA = (12, 20)          # raster glifu; 12/20 = 0.6, zgadza się z powyższym
+POOL = (4, 4)               # rozdzielczość sygnatury kształtu
 
 
-def prepare(img):
-    g = img.convert('L')
-    g = ImageOps.autocontrast(g, cutoff=1)
-    return g.filter(ImageFilter.UnsharpMask(radius=3, percent=DETAIL, threshold=1))
-
-
-def render(base, cols, gamma, contrast, invert):
-    w, h = base.size
-    rows = max(1, int(round(cols * (h / w) / CHAR_ASPECT)))
-
-    g = base.resize((cols, rows), Image.LANCZOS)
-
-    # Dla trybu ciemnego odwracamy ŹRÓDŁO, a nie gotowe znaki: wtedy gęstość
-    # znaku znaczy „dużo światła”, więc jasny tusz na ciemnym tle daje pozytyw.
-    if invert:
-        g = ImageOps.invert(g)
-
-    g = ImageOps.autocontrast(g, cutoff=2)
-    g = ImageEnhance.Contrast(g).enhance(contrast)
-    g = g.point(lambda v: int(255.0 * ((v / 255.0) ** gamma)))
-
-    # jasność 0..1 w siatce znaków
-    px = g.load()
-    grid = [[px[x, y] / 255.0 for x in range(cols)] for y in range(rows)]
-
-    steps = len(RAMP) - 1
-    out = []
-
-    for y in range(rows):
-        line = [' '] * cols
-
-        # Wężykiem: co drugi wiersz idziemy od prawej. Dithering zawsze
-        # w jedną stronę zostawia pionowe „robaki” w gładkich partiach.
-        rtl = (y % 2 == 1)
-        xs = range(cols - 1, -1, -1) if rtl else range(cols)
-        ahead = -1 if rtl else 1
-
-        for x in xs:
-            value = min(1.0, max(0.0, grid[y][x]))
-            level = int(round(value * steps))       # 0 = czarny .. steps = biały
-            line[x] = RAMP[steps - level]           # RAMP idzie od jasnych
-            err = value - (level / steps)
-
-            nx = x + ahead
-            if 0 <= nx < cols:
-                grid[y][nx] += err * 7 / 16
-            if y + 1 < rows:
-                if 0 <= x - ahead < cols:
-                    grid[y + 1][x - ahead] += err * 3 / 16
-                grid[y + 1][x] += err * 5 / 16
-                if 0 <= nx < cols:
-                    grid[y + 1][nx] += err * 1 / 16
-
-        out.append(''.join(line).rstrip().ljust(cols))
-
-    return '\n'.join(out)
-
-
-def main():
-    base = prepare(Image.open(SRC))
-
-    def art(cols, dark):
-        return json.dumps(render(
-            base, cols,
-            GAMMA_DARK if dark else GAMMA_LIGHT,
-            CONTRAST_DARK if dark else CONTRAST_LIGHT,
-            invert=dark,
-        ))
-
-    js = (
-        '/* Wygenerowane przez tools/ascii.py z %s (Jan Matejko, "Rejtan").\n'
-        '   NIE EDYTUJ RECZNIE - uruchom: python tools/ascii.py\n'
-        '\n'
-        '   Dwa warianty, bo tryby nie sa swoim lustrem: jasny znak na ciemnym\n'
-        '   tle rozlewa sie optycznie mocniej niz ciemny na bialym. Wariant\n'
-        '   nocny powstaje z ODWROCONEGO obrazu i ma wlasna krzywa tonalna,\n'
-        '   dzieki czemu w obu trybach obraz jest pozytywem.\n'
-        '   Podpis [ENTELECHIA] wstawia site.js przy rysowaniu. */\n'
-        'window.ASCII = {\n'
-        '  light: { wide: %s,\n'
-        '           narrow: %s },\n'
-        '  dark:  { wide: %s,\n'
-        '           narrow: %s }\n'
-        '};\n'
-    ) % (
-        SRC,
-        art(COLS_WIDE, False),
-        art(COLS_NARROW, False),
-        art(COLS_WIDE, True),
-        art(COLS_NARROW, True),
+def _wczytaj_paczke() -> None:
+    """Importuje asciiart; podpowiada co zrobić, jeśli go nie ma."""
+    try:
+        import asciiart                                    # noqa: F401
+        return
+    except ImportError:
+        pass
+    # tryb deweloperski: repozytorium obok tego
+    obok = os.path.join(os.path.dirname(REPO), "entelechia-memetyka")
+    if os.path.isdir(os.path.join(obok, "asciiart")):
+        sys.path.insert(0, obok)
+        try:
+            import asciiart                                # noqa: F401
+            return
+        except ImportError:
+            pass
+    sys.exit(
+        "Nie znaleziono paczki 'asciiart'.\n"
+        "  conda activate entelechia-memetyka\n"
+        "  pip install -e ../entelechia-memetyka\n"
+        "albo trzymaj repozytorium entelechia-memetyka obok tego."
     )
 
-    with io.open(OUT, 'w', encoding='utf-8', newline='\n') as f:
+
+_wczytaj_paczke()
+
+from asciiart import Options, convert                       # noqa: E402
+from asciiart.export import to_image                        # noqa: E402
+
+
+def katalog() -> dict:
+    with io.open(KATALOG, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def znajdz(dane: dict, slug: str) -> dict:
+    for o in dane["obrazy"]:
+        if o["slug"] == slug:
+            return o
+    dostepne = ", ".join(o["slug"] for o in dane["obrazy"])
+    sys.exit("Brak obrazu '%s' w obrazy.json. Dostępne: %s" % (slug, dostepne))
+
+
+def opcje(obraz: dict, ust: dict, kolumny: int, ciemny: bool) -> Options:
+    klucz_gamma = "gamma_ciemny" if ciemny else "gamma_jasny"
+    return Options(
+        cols=kolumny,
+        cell_aspect=PROPORCJA,
+        charset=obraz.get("zestaw", ust["zestaw"]),
+        font="bloki",
+        cell=KOMORKA,
+        pool=POOL,
+        sharpness=obraz.get("ostrosc", ust["ostrosc"]),
+        autolevels=obraz.get("poziomy", ust["poziomy"]),
+        gamma=obraz.get(klucz_gamma, ust[klucz_gamma]),
+        on_dark=ciemny,
+        # Strona rysuje jednym kolorem (var(--ink)), więc kolor wyłączamy.
+        # 'value' ustawiamy pod podgląd PNG, żeby odpowiadał temu, co widać
+        # na stronie: prawie czarny tusz na bieli, prawie biały na czerni.
+        saturation=0.0,
+        value=0.92 if ciemny else 0.10,
+        color_merge=0.0,
+    )
+
+
+def zbuduj(obraz: dict, ust: dict) -> dict:
+    zrodlo = os.path.join(OBRAZY, obraz["plik"])
+    if not os.path.exists(zrodlo):
+        sys.exit("Brak pliku źródłowego: %s" % zrodlo)
+
+    warianty: dict[str, dict[str, str]] = {}
+    podglad = {}
+    for ciemny in (False, True):
+        klucz = "dark" if ciemny else "light"
+        warianty[klucz] = {}
+        for nazwa, kolumny in (("wide", ust["kolumny_szerokie"]),
+                               ("narrow", ust["kolumny_waskie"])):
+            wynik = convert(zrodlo, opcje(obraz, ust, kolumny, ciemny))
+            warianty[klucz][nazwa] = wynik.text
+            if nazwa == "wide":
+                podglad[klucz] = wynik
+
+    os.makedirs(PODGLADY, exist_ok=True)
+    for klucz, wynik in podglad.items():
+        sciezka = os.path.join(PODGLADY, "%s-%s.png" % (obraz["slug"], klucz))
+        to_image(wynik, padding=8).save(sciezka)
+
+    siatka = podglad["light"]
+    print("  %-14s %d x %d znaków (szeroki)" % (obraz["slug"], siatka.cols, siatka.rows))
+    return warianty
+
+
+def zapisz(obraz: dict, warianty: dict) -> None:
+    opis = "%s, „%s”" % (obraz["autor"], obraz["tytul"])
+    if obraz.get("rok"):
+        opis += ", %s" % obraz["rok"]
+
+    meta = {
+        "slug": obraz["slug"],
+        "autor": obraz["autor"],
+        "tytul": obraz["tytul"],
+        "rok": obraz.get("rok"),
+        "zbiory": obraz.get("zbiory"),
+        "opis": opis + ", w znakach",
+    }
+
+    js = (
+        "/* WYGENEROWANE — NIE EDYTUJ RĘCZNIE.\n"
+        "   Źródło: assets/obrazy/%s\n"
+        "   Odtworzenie: conda activate entelechia-memetyka && python tools/ascii.py\n"
+        "   Katalog obrazów i ustawienia: assets/obrazy/obrazy.json\n"
+        "\n"
+        "   Dwa warianty tonalne, bo tryby nie są swoim lustrem: jasny znak na\n"
+        "   ciemnym tle rozlewa się optycznie mocniej niż ciemny na białym.\n"
+        "   Podpis [ENTELECHIA] wstawia site.js przy rysowaniu. */\n"
+        "window.ASCII = {\n"
+        "  meta:  %s,\n"
+        "  light: { wide: %s,\n"
+        "           narrow: %s },\n"
+        "  dark:  { wide: %s,\n"
+        "           narrow: %s }\n"
+        "};\n"
+    ) % (
+        obraz["plik"],
+        json.dumps(meta, ensure_ascii=False),
+        json.dumps(warianty["light"]["wide"], ensure_ascii=False),
+        json.dumps(warianty["light"]["narrow"], ensure_ascii=False),
+        json.dumps(warianty["dark"]["wide"], ensure_ascii=False),
+        json.dumps(warianty["dark"]["narrow"], ensure_ascii=False),
+    )
+
+    with io.open(WYNIK, "w", encoding="utf-8", newline="\n") as f:
         f.write(js)
-
-    print('zapisano %s  (%d / %d kolumn, wariant jasny i ciemny)'
-          % (OUT, COLS_WIDE, COLS_NARROW))
+    print("zapisano assets/ascii.js  (%s)" % opis)
 
 
-if __name__ == '__main__':
-    main()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("slug", nargs="?",
+                    help="który obraz (domyślnie 'aktywny' z obrazy.json)")
+    ap.add_argument("--wszystkie", action="store_true",
+                    help="wygeneruj podglądy dla wszystkich obrazów z katalogu")
+    ap.add_argument("--lista", action="store_true", help="wypisz katalog i wyjdź")
+    args = ap.parse_args(argv)
+
+    dane = katalog()
+    ust = dane["domyslne"]
+
+    if args.lista:
+        for o in dane["obrazy"]:
+            gwiazdka = "*" if o["slug"] == dane["aktywny"] else " "
+            print("%s %-14s %s — %s (%s)"
+                  % (gwiazdka, o["slug"], o["autor"], o["tytul"], o.get("rok", "?")))
+        return 0
+
+    if args.wszystkie:
+        for o in dane["obrazy"]:
+            zbuduj(o, ust)
+
+    obraz = znajdz(dane, args.slug or dane["aktywny"])
+    zapisz(obraz, zbuduj(obraz, ust))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,31 @@
+{
+  "_opis": [
+    "Katalog obrazów użytych na stronie w postaci grafiki znakowej.",
+    "Plik źródłowy leży obok, w tym samym katalogu (assets/obrazy/).",
+    "Pole 'aktywny' wskazuje, który obraz trafia na stronę główną.",
+    "Po każdej zmianie uruchom: python tools/ascii.py"
+  ],
+
+  "aktywny": "rejtan",
+
+  "domyslne": {
+    "kolumny_szerokie": 400,
+    "kolumny_waskie": 200,
+    "zestaw": "bloki",
+    "ostrosc": 0.06,
+    "poziomy": 1.0,
+    "gamma_jasny": 1.9,
+    "gamma_ciemny": 1.5
+  },
+
+  "obrazy": [
+    {
+      "slug": "rejtan",
+      "plik": "Reytan.jpg",
+      "autor": "Jan Matejko",
+      "tytul": "Rejtan — Upadek Polski",
+      "rok": 1866,
+      "zbiory": "Zamek Królewski w Warszawie"
+    }
+  ]
+}
