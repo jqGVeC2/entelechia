@@ -9,8 +9,11 @@
   --muted: #767676;
   --rule: #e4e4e4;
 
-  --measure: 34rem;   /* szerokość kolumny czytania */
-  --page: 46rem;      /* szerokość całej strony */
+  /* Treść wykorzystuje dostępną szerokość, ale kończy się przed samą
+     krawędzią ekranu. Limit 80rem zachowuje wygodne marginesy na dużych
+     monitorach, a na telefonie kolumna zawsze ma pełną dostępną szerokość. */
+  --measure: min(100%, 80rem);
+  --page: min(100%, 88rem);
 
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
            Georgia, "Times New Roman", Times, serif;
