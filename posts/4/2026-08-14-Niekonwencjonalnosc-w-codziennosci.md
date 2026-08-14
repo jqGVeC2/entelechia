@@ -162,7 +162,7 @@ Czas ucieczki z kotliny rządzi się prawem Arrheniusa. (Arrhenius właśnie brz
 
 $\tau \sim \exp\left( \frac{\Delta L}{T_{eff}} \right)$
 
-Więc płaskie minima o małym $\lambda_{max}$ są odporne, a wąskie o dużym \lambda_{max} rozpadają się przy pierwszym wstrząsie.  
+Więc płaskie minima o małym $\lambda_{max}$ są odporne, a wąskie o dużym $\lambda_{max}$ rozpadają się przy pierwszym wstrząsie.  
 Życiowo płaskie minimum to charakter niewrażliwy na zaburzenie warunków. Bycie nieprzewidywalnym to podniesienie $T_{eff}$, żeby nie przeuczyć się do jednego wąskiego rozwiązania.
 
 Zawsze warto coś zmieniać przez dużą wymiarowość. Nie ma jednej cechy. Jako ludzie mamy wiele cech:  
