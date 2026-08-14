@@ -239,6 +239,22 @@
         ${link(prev, 'prev', '← poprzedni')}
         ${link(next, 'next', 'następny →')}
       </nav>`;
+
+    renderMath(el);
+  }
+
+  // Wzory LaTeX w tekście: $...$ (w linii) i $$...$$ (blokowe).
+  function renderMath(root) {
+    if (!window.renderMathInElement) return;
+    const prose = root.querySelector('.prose');
+    if (!prose) return;
+    window.renderMathInElement(prose, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false }
+      ],
+      throwOnError: false
+    });
   }
 
   /* ---------- tryb jasny / ciemny ---------------------------------------- */
